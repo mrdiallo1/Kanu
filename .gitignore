@@ -1,7 +1,7 @@
 node_modules
 .next
 data/
-storage/
+/storage/
 .env
 .env.local
 next-env.d.ts
