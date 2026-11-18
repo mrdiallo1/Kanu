@@ -1,0 +1,35 @@
+{
+  "name": "kanu",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "tsc --noEmit",
+    "demo": "node scripts/demo.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1170.0",
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource-variable/instrument-sans": "^5.3.0",
+    "archiver": "^7.0.1",
+    "firebase-admin": "^14.5.1",
+    "jsqr": "^1.4.0",
+    "next": "^16.4.6",
+    "pdfkit": "^0.20.2",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "@types/archiver": "^6.0.4",
+    "@types/node": "^26.6.6",
+    "@types/pdfkit": "^0.17.7",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^7.0.2"
+  }
+}
