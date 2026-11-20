@@ -110,7 +110,12 @@ export default async function Page() {
         </section>
 
         <section>
-          <h2 style={{ fontSize: 32, marginBottom: 6 }}>Boutique</h2>
+          <div className="row between" style={{ marginBottom: 6 }}>
+            <h2 style={{ fontSize: 32 }}>Boutique</h2>
+            <Link href="/vendeur" className="btn sm">
+              Gérer la boutique
+            </Link>
+          </div>
           <p className="muted small" style={{ marginBottom: 16 }}>
             {vendors.filter((v) => v.status === 'en_attente').length} vendeur(s) à valider, {orders.length} commandes au total pour{' '}
             {fcfa(orders.filter((o) => ['livree', 'terminee'].includes(o.status)).reduce((n, o) => n + o.total, 0))} livrés.

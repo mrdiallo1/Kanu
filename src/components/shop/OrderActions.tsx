@@ -27,12 +27,12 @@ const ACTION: Record<string, string> = {
   refusee: 'Refuser',
   en_preparation: 'En préparation',
   en_livraison: 'Partie en livraison',
-  livree: 'Livrée',
+  livree: 'Livrée et payée',
   terminee: 'Terminer',
   annulee: 'Annuler',
 };
 
-/** Boutons du vendeur pour faire avancer une commande. */
+/** Boutons de l'équipe Kanu pour faire avancer une commande. */
 export function VendorOrderActions({ id, status }: { id: string; status: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);

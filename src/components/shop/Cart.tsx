@@ -15,7 +15,7 @@ interface Ev {
   place: string;
 }
 
-export function Cart({ user, events }: { user: { name: string; phone: string } | null; events: Ev[] }) {
+export function Cart({ user, events, guestOnly = false }: { user: { name: string; phone: string } | null; events: Ev[]; guestOnly?: boolean }) {
   const router = useRouter();
   const cart = useCart();
   const [step, setStep] = useState<'panier' | 'commande'>('panier');
@@ -81,7 +81,7 @@ export function Cart({ user, events }: { user: { name: string; phone: string } |
           {byVendor.map((v) => (
             <section key={v.name} style={{ marginTop: 18 }}>
               <p className="small muted" style={{ marginBottom: 6 }}>
-                Vendu par <b style={{ color: 'var(--encre)' }}>{v.name}</b>
+                Vendu et livré par <b style={{ color: 'var(--encre)' }}>{v.name}</b>
               </p>
               <div className="rows">
                 {v.lines.map((l) => (
@@ -161,7 +161,8 @@ export function Cart({ user, events }: { user: { name: string; phone: string } |
                     {x.title}
                   </option>
                 ))}
-                <option value="">Une autre occasion</option>
+                {/* Un invité commande forcément pour la fête où il est invité */}
+                {!guestOnly && <option value="">Une autre occasion</option>}
               </select>
             </label>
           )}
@@ -184,7 +185,7 @@ export function Cart({ user, events }: { user: { name: string; phone: string } |
             <input type="date" value={neededOn} onChange={(e) => setNeededOn(e.target.value)} required />
           </label>
           <label className="field">
-            <span>Téléphone pour le vendeur</span>
+            <span>Votre téléphone</span>
             <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required />
           </label>
           <label className="field">
@@ -192,7 +193,7 @@ export function Cart({ user, events }: { user: { name: string; phone: string } |
             <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Livrer avant 10 h, appeler en arrivant…" />
           </label>
           <div className="panel sand small">
-            Vous ne payez rien maintenant. Le vendeur confirme la disponibilité, puis vous réglez à la livraison ou au retrait, en espèces ou par
+            Vous ne payez rien maintenant. Nous vous appelons pour confirmer, puis vous payez à la livraison ou au retrait, en espèces ou par
             mobile money.
           </div>
           {error && <p className="alert err">{error}</p>}

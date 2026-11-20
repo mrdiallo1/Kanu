@@ -2,7 +2,8 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { invitationPreview } from '@/lib/preview';
 import * as db from '@/lib/db';
-import { viewerFor } from '@/lib/auth';
+import { after } from 'next/server';
+import { eventBySlug, viewerOf } from '@/lib/space';
 import { feature } from '@/lib/access';
 import { unreadTotal } from '@/lib/chat';
 import { eventTitle, longDate, typeLabel } from '@/lib/format';
@@ -12,13 +13,13 @@ import { GuestNav } from '@/components/GuestNav';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const event = await db.events.bySlug(slug);
+  const event = await eventBySlug(slug);
   return event ? invitationPreview(event) : { title: 'Espace introuvable', robots: { index: false } };
 }
 
 export default async function Layout({ children, params }: { children: React.ReactNode; params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const event = await db.events.bySlug(slug);
+  const event = await eventBySlug(slug);
 
   if (!event || event.status === 'suspendu' || event.status === 'brouillon') {
     return (
@@ -32,7 +33,7 @@ export default async function Layout({ children, params }: { children: React.Rea
     );
   }
 
-  const viewer = await viewerFor(event);
+  const viewer = await viewerOf(event);
   if (!viewer) {
     const names = event.type === 'bapteme' ? [event.babyName || 'Bébé'] : [event.hostA, `& ${event.hostB}`];
     return (
@@ -58,7 +59,9 @@ export default async function Layout({ children, params }: { children: React.Rea
 
   if (viewer.kind === 'guest') {
     const last = viewer.guest.lastSeenAt ? Date.parse(viewer.guest.lastSeenAt) : 0;
-    if (Date.now() - last > 10 * 60 * 1000) await db.guests.update(viewer.guest.id, { lastSeenAt: new Date().toISOString() });
+    // Enregistré après l'envoi de la page : ne ralentit pas l'affichage
+    const gid = viewer.guest.id;
+    if (Date.now() - last > 10 * 60 * 1000) after(() => db.guests.update(gid, { lastSeenAt: new Date().toISOString() }));
   }
 
   return (

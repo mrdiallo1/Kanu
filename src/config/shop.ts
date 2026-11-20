@@ -18,17 +18,17 @@ export type CategoryId = (typeof CATEGORIES)[number]['id'];
 export const categoryName = (id: string) => CATEGORIES.find((c) => c.id === id)?.name || 'Autres';
 
 export const ORDER_STATUS: Record<string, string> = {
-  en_attente: 'Envoyée au vendeur',
+  en_attente: 'Envoyée',
   acceptee: 'Acceptée',
   refusee: 'Refusée',
   en_preparation: 'En préparation',
   en_livraison: 'En livraison',
-  livree: 'Livrée',
+  livree: 'Livrée et payée',
   terminee: 'Terminée',
   annulee: 'Annulée',
 };
 
-/** Étapes que le vendeur peut faire avancer, dans l'ordre */
+/** Étapes que l'équipe Kanu fait avancer, dans l'ordre */
 export const NEXT_STATUS: Record<string, string[]> = {
   en_attente: ['acceptee', 'refusee'],
   acceptee: ['en_preparation', 'annulee'],

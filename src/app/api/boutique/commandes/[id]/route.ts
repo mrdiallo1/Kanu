@@ -1,14 +1,17 @@
 import * as db from '@/lib/db';
-import { currentUser } from '@/lib/auth';
+import { currentUser, isAdmin } from '@/lib/auth';
+import { SHOP_VENDOR_ID, guestBuyers } from '@/lib/shop';
 import { body, fail, ok, str } from '@/lib/api';
 import { NEXT_STATUS } from '@/config/shop';
 import type { OrderStatus } from '@/lib/types';
 
-// Le vendeur fait avancer la commande ; l'acheteur peut l'annuler tant qu'elle n'est pas acceptée.
+// L'équipe Kanu (admins) fait avancer la commande ; le client peut l'annuler tant qu'elle n'est pas acceptée.
+// « Livrée et payée » : le client a payé à la livraison, sa commande s'affiche « Payée ».
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const user = await currentUser();
-  if (!user) return fail('Connectez-vous.', 401);
+  const guestIds = (await guestBuyers()).map((g) => g.buyerId);
+  if (!user && guestIds.length === 0) return fail('Connectez-vous.', 401);
   const order = await db.orders.byId(id);
   if (!order) return fail('Commande introuvable.', 404);
   const b = await body(req);
@@ -16,13 +19,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const note = str(b.note, 300) || undefined;
   const now = new Date().toISOString();
 
-  const vendor = await db.vendors.byUser(user.id);
-  const isVendor = vendor && vendor.id === order.vendorId;
-  const isBuyer = order.buyerId === user.id;
+  const isVendor = isAdmin(user) && order.vendorId === SHOP_VENDOR_ID;
+  const isBuyer = order.buyerId === user?.id || guestIds.includes(order.buyerId);
 
   if (isBuyer && !isVendor) {
     if (status !== 'annulee' || order.status !== 'en_attente') {
-      return fail('Vous pouvez annuler la commande tant que le vendeur ne l’a pas acceptée.');
+      return fail('Vous pouvez annuler la commande tant que nous ne l’avons pas acceptée.');
     }
   } else if (isVendor) {
     if (!(NEXT_STATUS[order.status] || []).includes(status)) return fail('Cette étape n’est pas possible maintenant.');

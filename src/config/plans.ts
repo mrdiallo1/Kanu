@@ -44,7 +44,7 @@ export const PLANS: Record<PlanId, Plan> = {
     price: 20000,
     maxGuests: 300,
     storageGb: 50,
-    retentionDays: 60,
+    retentionDays: 30,
     maxVoiceSeconds: 120,
     features: ['galerie', 'livreOrEcrit', 'livreOrVocal', 'qrCodes', 'exportComplet'],
     pitch: 'Les souvenirs, plus le contrôle des entrées le jour J.',
@@ -52,23 +52,14 @@ export const PLANS: Record<PlanId, Plan> = {
   prestige: {
     id: 'prestige',
     name: 'Prestige',
-    price: 25000,
+    // PRIX DE TEST : remettre 25000 avant d'ouvrir au public
+    price: 100,
     maxGuests: 500,
     storageGb: 100,
-    retentionDays: 90,
+    retentionDays: 45,
     maxVoiceSeconds: 120,
-    features: [
-      'galerie',
-      'livreOrEcrit',
-      'livreOrVocal',
-      'qrCodes',
-      'exportComplet',
-      'livreOrPdf',
-      'miniSite',
-      'photographe',
-      'plusieursEspaces',
-    ],
-    pitch: 'Tout, pour les grandes fêtes et les photographes.',
+    features: ['galerie', 'livreOrEcrit', 'livreOrVocal', 'qrCodes', 'exportComplet', 'livreOrPdf'],
+    pitch: 'Tout, pour les grandes fêtes.',
   },
 };
 

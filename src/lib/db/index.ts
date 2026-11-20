@@ -12,6 +12,7 @@ import {
 } from 'firebase-admin/firestore';
 
 import type {
+  LastMessage,
   Agent,
   Checkin,
   EventSpace,
@@ -640,6 +641,38 @@ export const groups = {
     }
   },
 
+  /** Marque tous les messages du groupe comme lus par ce membre */
+  async markReadCount(id: string, key: string, count: number) {
+    try {
+      await col('groups').doc(id).update(new FieldPath('readCounts', key), count);
+    } catch (error) {
+      const code = String((error as { code?: string | number }).code ?? '');
+      if (code !== '5' && code !== 'not-found') throw error;
+    }
+  },
+
+  /**
+   * Groupes créés avant cette version : calcule une seule fois le résumé
+   * (nombre de messages, dernier message). Les messages existants sont
+   * considérés comme lus par ceux qui avaient déjà ouvert le groupe.
+   */
+  async ensureSummary(id: string) {
+    const ref = col('groups').doc(id);
+    const snap = await ref.get();
+    const g = snap.data() as Group | undefined;
+    if (!g || g.msgCount !== undefined) return g ?? null;
+    const [countSnap, last] = await Promise.all([
+      col('messages').where('groupId', '==', id).count().get(),
+      messages.last(id),
+    ]);
+    const msgCount = countSnap.data().count;
+    const readCounts: Record<string, number> = {};
+    for (const k of Object.keys(g.reads || {})) readCounts[k] = msgCount;
+    const upd = { msgCount, readCounts, rev: 1, ...(last ? { last: lastOf(last) } : {}) };
+    await ref.set(upd, { merge: true });
+    return { ...g, ...upd } as Group;
+  },
+
   async remove(id: string) {
     await col('groups').doc(id).delete();
 
@@ -658,21 +691,65 @@ const groupMessages = (groupId: string) =>
     .where('groupId', '==', groupId)
     .orderBy('createdAt', 'asc');
 
+/** Clé du membre qui a écrit le message ('owner', id de l'invité, ou null pour Kanu) */
+export const authorKeyOf = (m: Message) => (m.author.id === 'systeme' ? null : m.author.kind === 'owner' ? 'owner' : m.author.id);
+
+/** Résumé d'un message pour la liste des discussions */
+export function lastOf(m: Message): LastMessage {
+  return {
+    id: m.id,
+    kind: m.author.id === 'systeme' ? 'systeme' : m.deleted ? 'supprime' : m.audio ? 'vocal' : 'texte',
+    text: m.deleted ? '' : m.text.slice(0, 120),
+    author: m.author.name,
+    authorKey: authorKeyOf(m) || 'systeme',
+    seconds: m.audio?.seconds,
+    at: m.createdAt,
+  };
+}
+
 export const messages = {
+  /**
+   * Enregistre un message ET met à jour le résumé du groupe (dernier message,
+   * nombre de messages, lu par l'auteur) dans une seule transaction.
+   * La liste des discussions n'a ensuite qu'à lire les groupes : très rapide.
+   */
   async create(m: Message) {
-    const batch = firestore().batch();
-
-    batch.set(col('messages').doc(m.id), m);
-
-    batch.set(
-      col('groups').doc(m.groupId),
-      { updatedAt: m.createdAt },
-      { merge: true },
-    );
-
-    await batch.commit();
-
+    await groups.ensureSummary(m.groupId);
+    const gref = col('groups').doc(m.groupId);
+    await firestore().runTransaction(async (tx) => {
+      const snap = await tx.get(gref);
+      const g = snap.data() as Group | undefined;
+      const count = (g?.msgCount ?? 0) + 1;
+      const key = authorKeyOf(m);
+      const readCounts = { ...(g?.readCounts || {}) };
+      if (key) readCounts[key] = count;
+      tx.set(col('messages').doc(m.id), m);
+      tx.set(
+        gref,
+        { updatedAt: m.createdAt, msgCount: count, rev: (g?.rev ?? 0) + 1, last: lastOf(m), readCounts },
+        { merge: true },
+      );
+    });
     return m;
+  },
+
+  async byId(id: string) {
+    return getOne<Message>('messages', id);
+  },
+
+  /** Modifier ou supprimer un message (et prévenir les autres membres) */
+  async update(m: Message, data: Partial<Message>) {
+    const next = { ...m, ...data };
+    const gref = col('groups').doc(m.groupId);
+    await firestore().runTransaction(async (tx) => {
+      const snap = await tx.get(gref);
+      const g = snap.data() as Group | undefined;
+      tx.set(col('messages').doc(m.id), next);
+      const upd: Record<string, unknown> = { rev: (g?.rev ?? 0) + 1 };
+      if (g?.last?.id === m.id) upd.last = lastOf(next);
+      tx.set(gref, upd, { merge: true });
+    });
+    return next;
   },
 
   async list(
@@ -690,6 +767,11 @@ export const messages = {
     }
 
     return findAll<Message>(q);
+  },
+
+  /** Les messages plus anciens qu'une date (pour remonter dans la discussion) */
+  async before(groupId: string, before: string, limit: number) {
+    return findAll<Message>(groupMessages(groupId).where('createdAt', '<', before).limitToLast(limit));
   },
 
   async last(groupId: string) {

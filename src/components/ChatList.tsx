@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/client';
 import { Icon } from './Icon';
+import './chat.css';
 import { MemberPicker } from './MemberPicker';
 
 export interface GroupSummary {
@@ -13,7 +14,7 @@ export interface GroupSummary {
   description: string;
   members: number;
   isAdmin: boolean;
-  last: { text: string; author: string; mine: boolean; at: string } | null;
+  last: { kind: 'texte' | 'vocal' | 'supprime' | 'systeme'; text: string; author: string; mine: boolean; seconds?: number; at: string } | null;
   unread: number;
   updatedAt: string;
 }
@@ -41,27 +42,85 @@ export function shortTime(iso: string) {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
 }
 
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+/** Aperçu du dernier message, comme dans la liste de WhatsApp */
+function Preview({ g }: { g: GroupSummary }) {
+  const l = g.last;
+  if (!l) return <span className="wa-prev muted-i">{g.members} membres</span>;
+  const who = l.kind === 'systeme' ? '' : l.mine ? 'Vous : ' : `${l.author.split(' ')[0]} : `;
+  if (l.kind === 'supprime')
+    return (
+      <span className="wa-prev muted-i">
+        {who}
+        <BlockIcon /> Message supprimé
+      </span>
+    );
+  if (l.kind === 'vocal')
+    return (
+      <span className="wa-prev">
+        {who}
+        <MicIcon /> Message vocal{l.seconds ? ` (${clock(l.seconds)})` : ''}
+      </span>
+    );
+  return (
+    <span className="wa-prev">
+      {who}
+      {l.text}
+    </span>
+  );
+}
+
 export function ChatList({ slug, initial, canCreate, owner }: { slug: string; initial: GroupSummary[]; canCreate: boolean; owner: boolean }) {
   const router = useRouter();
   const [groups, setGroups] = useState(initial);
   const [creating, setCreating] = useState(false);
+  const [q, setQ] = useState('');
+  const [filter, setFilter] = useState<'tous' | 'non-lus'>('tous');
 
+  // Mise à jour toutes les 5 s quand l'écran est affiché (une seule lecture rapide côté serveur)
   useEffect(() => {
-    const t = setInterval(async () => {
+    const load = async () => {
+      if (document.hidden) return;
       const r = await api<{ groups: GroupSummary[] }>(`/api/e/${slug}/groupes`, 'GET');
       if (r.ok) setGroups(r.data.groups);
-    }, 8000);
-    return () => clearInterval(t);
+    };
+    const t = setInterval(load, 5000);
+    document.addEventListener('visibilitychange', load);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', load);
+    };
   }, [slug]);
 
+  const shown = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return groups.filter((g) => (!s || g.name.toLowerCase().includes(s)) && (filter === 'tous' || g.unread > 0));
+  }, [groups, q, filter]);
+  const unreadGroups = groups.filter((g) => g.unread > 0).length;
+
   return (
-    <>
-      <header className="appbar">
-        <h1 style={{ fontSize: 26 }}>Discussions</h1>
-        {canCreate && (
-          <button className="icon-btn orange" onClick={() => setCreating(true)} aria-label="Nouveau groupe">
-            <Icon name="plus" size={26} stroke={2.2} />
-          </button>
+    <div className="wa-list">
+      <header className="wa-head">
+        <h1>Discussions</h1>
+        {groups.length > 0 && (
+          <>
+            <label className="wa-search">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <circle cx="11" cy="11" r="7" />
+                <path d="M20 20l-3.5-3.5" />
+              </svg>
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un groupe" aria-label="Rechercher un groupe" />
+            </label>
+            <div className="wa-chips" role="group" aria-label="Filtrer les groupes">
+              <button aria-pressed={filter === 'tous'} onClick={() => setFilter('tous')}>
+                Tous
+              </button>
+              <button aria-pressed={filter === 'non-lus'} onClick={() => setFilter('non-lus')}>
+                Non lus{unreadGroups ? ` ${unreadGroups}` : ''}
+              </button>
+            </div>
+          </>
         )}
       </header>
 
@@ -81,34 +140,44 @@ export function ChatList({ slug, initial, canCreate, owner }: { slug: string; in
             </div>
           )}
         </div>
+      ) : shown.length === 0 ? (
+        <p className="muted small" style={{ padding: '28px 20px', textAlign: 'center' }}>
+          {filter === 'non-lus' && !q ? 'Aucun message non lu.' : 'Aucun groupe ne correspond.'}
+        </p>
       ) : (
-        <div style={{ paddingTop: 6 }}>
-          {groups.map((g) => (
-            <Link key={g.id} href={`/e/${slug}/discussions/${g.id}`} className="chat-row">
-              <span className="avatar" style={{ background: avatarColor(g.name) }}>
-                {initials(g.name)}
-              </span>
-              <span className="body">
-                <span className="top">
-                  <span className="name">{g.name}</span>
-                  {g.last && <time className={g.unread ? 'new' : ''}>{shortTime(g.last.at)}</time>}
+        <ul className="wa-rows">
+          {shown.map((g) => (
+            <li key={g.id}>
+              <Link href={`/e/${slug}/discussions/${g.id}`} className="wa-row" prefetch>
+                <span className="wa-av" style={{ background: avatarColor(g.name) }}>
+                  {initials(g.name)}
                 </span>
-                <span className="bottom">
-                  <span className="last">
-                    {g.last ? (g.last.author === 'Kanu' ? g.last.text : `${g.last.mine ? 'Vous' : g.last.author.split(' ')[0]} : ${g.last.text}`) : `${g.members} membres`}
+                <span className="wa-body">
+                  <span className="wa-line">
+                    <span className="wa-name">{g.name}</span>
+                    {g.last && <time className={g.unread ? 'new' : ''}>{shortTime(g.last.at)}</time>}
                   </span>
-                  {g.unread > 0 && <span className="badge">{g.unread}</span>}
+                  <span className="wa-line">
+                    <Preview g={g} />
+                    {g.unread > 0 && <span className="wa-badge">{g.unread > 99 ? '99+' : g.unread}</span>}
+                  </span>
                 </span>
-              </span>
-            </Link>
+              </Link>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       {owner && groups.length > 0 && (
-        <p className="tiny" style={{ padding: '18px 16px' }}>
+        <p className="tiny" style={{ padding: '18px 16px 90px' }}>
           Pour qu’un invité puisse créer ses propres groupes, autorisez-le depuis sa fiche dans Gérer, Invités.
         </p>
+      )}
+
+      {canCreate && groups.length > 0 && (
+        <button className="wa-fab" onClick={() => setCreating(true)} aria-label="Nouveau groupe">
+          <Icon name="plus" size={28} stroke={2.2} />
+        </button>
       )}
 
       {creating && (
@@ -121,7 +190,25 @@ export function ChatList({ slug, initial, canCreate, owner }: { slug: string; in
           }}
         />
       )}
-    </>
+    </div>
+  );
+}
+
+function MicIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden style={{ verticalAlign: '-2px', color: 'var(--orange-fonce)' }}>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
+    </svg>
+  );
+}
+
+function BlockIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden style={{ verticalAlign: '-2px' }}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M5.6 5.6l12.8 12.8" />
+    </svg>
   );
 }
 

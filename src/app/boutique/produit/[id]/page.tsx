@@ -5,12 +5,14 @@ import { categoryName } from '@/config/shop';
 import { ShopBar } from '@/components/shop/ShopBar';
 import { ProductPhoto } from '@/components/shop/ProductCard';
 import { AddToCart } from '@/components/shop/AddToCart';
+import { SHOP_VENDOR_ID } from '@/lib/shop';
+import { site } from '@/config/site';
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const p = await db.products.byId(id);
   const vendor = p ? await db.vendors.byId(p.vendorId) : null;
-  if (!p || !vendor || vendor.status !== 'valide' || !p.active) notFound();
+  if (!p || !vendor || vendor.status !== 'valide' || !p.active || p.vendorId !== SHOP_VENDOR_ID) notFound();
 
   return (
     <>
@@ -54,12 +56,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             )}
             <div className="rows">
               <div style={{ cursor: 'default' }}>
-                <span className="avatar sm">{vendor.businessName[0]}</span>
+                <span className="avatar sm" style={{ background: 'var(--orange)' }}>{site.name[0]}</span>
                 <span className="grow">
                   <span className="name" style={{ display: 'block', fontSize: 16 }}>
-                    {vendor.businessName}
+                    Vendu et livré par {site.name}
                   </span>
-                  <span className="meta">{vendor.city}</span>
+                  <span className="meta">Paiement à la livraison, en espèces ou par mobile money.</span>
                 </span>
               </div>
             </div>

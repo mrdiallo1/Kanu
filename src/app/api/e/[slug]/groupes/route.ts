@@ -44,6 +44,9 @@ export async function POST(req: Request, ctx: Ctx) {
     reads: {},
     createdAt: now,
     updatedAt: now,
+    msgCount: 0,
+    readCounts: {},
+    rev: 0,
   });
   await db.messages.create({
     id: newId(),

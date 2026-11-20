@@ -6,17 +6,18 @@ import { fcfa, longDate, dateTime } from '@/lib/format';
 import { ORDER_STATUS, categoryName } from '@/config/shop';
 import { Logo } from '@/components/Logo';
 import { Icon } from '@/components/Icon';
-import { VendorSignup, VendorProfileForm, ProductToggle } from '@/components/shop/VendorForms';
+import { VendorProfileForm, ProductToggle } from '@/components/shop/VendorForms';
 import { VendorOrderActions } from '@/components/shop/OrderActions';
 import { ProductPhoto } from '@/components/shop/ProductCard';
+import { eventTitle } from '@/lib/format';
 
-export const metadata = { title: 'Espace vendeur' };
+export const metadata = { title: 'Gestion de la boutique' };
 
 const tone = (s: string) => (['livree', 'terminee'].includes(s) ? 'ok' : ['refusee', 'annulee'].includes(s) ? 'no' : 'warn');
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ v?: string }> }) {
   const { user, vendor } = await currentVendor();
-  if (!user) redirect('/inscription?suite=/vendeur');
+  if (!user) redirect('/connexion?suite=/vendeur');
   const { v } = await searchParams;
 
   if (!vendor) {
@@ -27,7 +28,15 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ v
           <span style={{ flex: 1 }} />
         </header>
         <main className="narrow" style={{ padding: '24px 0 64px' }}>
-          <VendorSignup defaultPhone={user.phone} />
+          <h1 style={{ fontSize: 32 }}>Réservé à l’équipe Kanu</h1>
+          <p className="muted" style={{ marginTop: 10 }}>
+            La boutique est tenue par Kanu : c’est nous qui vendons et livrons. Cette page sert seulement à gérer les produits et les commandes.
+          </p>
+          <p style={{ marginTop: 18 }}>
+            <Link href="/boutique" className="btn">
+              Aller à la boutique
+            </Link>
+          </p>
         </main>
       </>
     );
@@ -35,6 +44,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ v
 
   const view = v === 'produits' || v === 'profil' ? v : 'commandes';
   const [orders, products] = await Promise.all([db.orders.byVendor(vendor.id), db.products.byVendor(vendor.id)]);
+  // Titre de la fête de chaque commande (mariage, baptême…)
+  const evIds = [...new Set(orders.map((o) => o.eventId).filter(Boolean))] as string[];
+  const evTitles = new Map((await Promise.all(evIds.map((id) => db.events.byId(id)))).filter((e) => e).map((e) => [e!.id, eventTitle(e!)]));
   const open = orders.filter((o) => !['refusee', 'annulee', 'terminee', 'livree'].includes(o.status));
   const tabs = [
     { id: 'commandes', label: 'Commandes', icon: 'box', badge: orders.filter((o) => o.status === 'en_attente').length },
@@ -47,7 +59,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ v
       <header className="appbar">
         <h1>
           {vendor.businessName}
-          <span className="sub">Espace vendeur</span>
+          <span className="sub">Gestion de la boutique</span>
         </h1>
         {view === 'produits' && (
           <Link href="/vendeur/produit/nouveau" className="icon-btn orange" aria-label="Ajouter un produit">
@@ -94,6 +106,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ v
                       <div className="tiny">
                         {o.reference}, reçue le {dateTime(o.createdAt)}
                       </div>
+                      {o.eventId && evTitles.get(o.eventId) && (
+                        <div className="tiny">
+                          {o.buyerId.startsWith('invite:') ? 'Invité de : ' : 'Pour : '}
+                          {evTitles.get(o.eventId)}
+                        </div>
+                      )}
                     </div>
                     <span className={`pill ${tone(o.status)}`}>{ORDER_STATUS[o.status]}</span>
                   </div>
@@ -176,7 +194,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ v
         {view === 'profil' && <VendorProfileForm vendor={vendor} />}
       </main>
 
-      <nav className="bottom-nav" style={{ ['--items' as string]: 3 }} aria-label="Navigation vendeur">
+      <nav className="bottom-nav" style={{ ['--items' as string]: 3 }} aria-label="Navigation de la gestion">
         {tabs.map((t) => (
           <Link key={t.id} href={`/vendeur?v=${t.id}`} aria-current={view === t.id ? 'page' : undefined}>
             <Icon name={t.icon} size={25} />

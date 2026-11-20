@@ -31,7 +31,7 @@ const FAQ = [
   },
   {
     q: 'Combien de temps les souvenirs restent en ligne ?',
-    a: 'La durée commence le jour de la fête, pas le jour du paiement : 30, 60 ou 90 jours selon l’offre. Vous êtes prévenus avant la suppression pour tout télécharger.',
+    a: 'La durée commence le jour de la fête, pas le jour du paiement : 30 jours, ou 45 jours avec l’offre Prestige. Vous êtes prévenus avant la suppression pour tout télécharger.',
   },
   {
     q: 'Comment je paie ?',
@@ -113,7 +113,18 @@ const styles = `
   z-index: 2;                   /* le billet passe devant l'image */
   width: min(620px, 75.6cqw);   /* largeur du billet, en proportion de l'image */
   margin-top: max(-150px, -18.3cqw);  /* remonte le billet sur le bas de l'image, en proportion */
-  filter: drop-shadow(0 22px 40px rgba(33, 20, 13, .28));
+  /* Pas de « filter: drop-shadow » ici : sur iPhone (Safari), un filtre posé sur le billet
+     découpé (mask) dessine un rectangle noir en haut à gauche de la page, sur le logo. */
+}
+/* Ombre du billet, dessinée par un calque à part (sans filtre) */
+.lp-ticket::before {
+  content: '';
+  position: absolute;
+  left: 4%; right: 4%; top: 10%; bottom: 0;
+  border-radius: 4.5cqw;
+  box-shadow: 0 22px 40px rgba(33, 20, 13, .28);
+  z-index: -1;
+  pointer-events: none;
 }
 /* Le billet garde sa forme d'ordinateur (prénoms à gauche, QR code à droite) même sur téléphone.
    Chaque taille = taille d'ordinateur ÷ 6,2 (car 620 px = 100cqw). */

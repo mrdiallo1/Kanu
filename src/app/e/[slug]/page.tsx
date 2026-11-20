@@ -158,6 +158,15 @@ export default async function Page({ params, searchParams }: Props) {
                 </small>
               </span>
             </Link>
+
+            {/* Les invités aident aussi : eau, riz, chaises… livrés pour la fête, payés à la livraison */}
+            <Link href="/boutique">
+              <Icon name="bag" />
+              <span>
+                <b>Boutique</b>
+                <small>Commander pour la fête</small>
+              </span>
+            </Link>
           </div>
         </section>
 

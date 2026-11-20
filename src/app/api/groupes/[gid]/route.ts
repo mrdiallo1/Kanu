@@ -1,51 +1,68 @@
 import * as db from '@/lib/db';
-import { viewerFor } from '@/lib/auth';
 import { body, fail, ok, str } from '@/lib/api';
-import { isGroupAdmin, loadGroup as load, memberKey } from '@/lib/chat';
+import { after } from 'next/server';
+import * as storage from '@/lib/storage';
+import { PAGE_SIZE, isGroupAdmin, loadGroup as load, memberKey, messageView } from '@/lib/chat';
 import { newId } from '@/lib/ids';
 
 type Ctx = { params: Promise<{ gid: string }> };
 
-/** Messages (tous, ou seulement ceux après ?apres=date) et informations du groupe. */
+/**
+ * Messages d'un groupe.
+ * - sans paramètre : les 50 derniers messages
+ * - ?rev=N : vérification rapide (toutes les 2-3 s). Si rien n'a changé
+ *   depuis la version N, on répond { same: true } sans lire les messages.
+ * - ?avant=date : 50 messages plus anciens (en remontant dans la discussion)
+ * - ?infos=1 : nom, description et membres (fiche du groupe)
+ */
 export async function GET(req: Request, ctx: Ctx) {
   const l = await load(ctx);
   if (!l) return fail('Groupe introuvable.', 404);
-  const after = new URL(req.url).searchParams.get('apres') || undefined;
-  const msgs = await db.messages.list(l.group.id, { after, limit: after ? undefined : 300 });
+  const url = new URL(req.url);
   const key = memberKey(l.viewer);
-  const now = new Date().toISOString();
-  await db.groups.markRead(l.group.id, key, now);
 
-  let info = undefined;
-  if (!after) {
-    const guests = await db.guests.list(l.event.id);
+  if (url.searchParams.get('infos') === '1') {
+    const [guests, owner] = await Promise.all([db.guests.list(l.event.id), db.users.byId(l.event.ownerId)]);
     const byId = new Map(guests.map((g) => [g.id, g]));
-    const owner = await db.users.byId(l.event.ownerId);
-    info = {
-      id: l.group.id,
-      name: l.group.name,
-      description: l.group.description || '',
-      isAdmin: isGroupAdmin(l.group, l.viewer),
-      isOwner: l.viewer.kind === 'owner',
-      members: [
-        { id: 'owner', name: owner?.name || 'Organisateurs', admin: true, owner: true },
-        ...l.group.memberGuestIds
-          .map((id) => byId.get(id))
-          .filter(Boolean)
-          .map((g) => ({ id: g!.id, name: g!.name, admin: l.group.adminGuestIds.includes(g!.id), owner: false })),
-      ],
-    };
+    return ok({
+      group: {
+        id: l.group.id,
+        name: l.group.name,
+        description: l.group.description || '',
+        isAdmin: isGroupAdmin(l.group, l.viewer),
+        isOwner: l.viewer.kind === 'owner',
+        members: [
+          { id: 'owner', name: owner?.name || 'Organisateurs', admin: true, owner: true },
+          ...l.group.memberGuestIds
+            .map((id) => byId.get(id))
+            .filter(Boolean)
+            .map((g) => ({ id: g!.id, name: g!.name, admin: l.group.adminGuestIds.includes(g!.id), owner: false })),
+        ],
+      },
+    });
   }
+
+  const before = url.searchParams.get('avant');
+  if (before) {
+    const older = await db.messages.before(l.group.id, before, PAGE_SIZE);
+    return ok({ messages: older.map(messageView), hasMore: older.length === PAGE_SIZE });
+  }
+
+  const rev = l.group.rev ?? 0;
+  const known = url.searchParams.get('rev');
+  if (known !== null && Number(known) === rev) return ok({ same: true });
+
+  const msgs = await db.messages.list(l.group.id, { limit: PAGE_SIZE });
+  const count = l.group.msgCount ?? msgs.length;
+  // « Lu » enregistré après la réponse : ne ralentit pas l'affichage
+  if ((l.group.readCounts?.[key] ?? -1) < count) after(() => db.groups.markReadCount(l.group.id, key, count));
   return ok({
     me: key,
-    group: info,
-    messages: msgs.map((m) => ({
-      id: m.id,
-      text: m.text,
-      at: m.createdAt,
-      author: m.author.name,
-      authorKey: m.author.id === 'systeme' ? 'systeme' : m.author.kind === 'owner' ? 'owner' : m.author.id,
-    })),
+    rev,
+    name: l.group.name,
+    isAdmin: isGroupAdmin(l.group, l.viewer),
+    messages: msgs.map(messageView),
+    hasMore: count > msgs.length,
   });
 }
 
@@ -113,6 +130,9 @@ export async function DELETE(_req: Request, ctx: Ctx) {
   if (!l) return fail('Groupe introuvable.', 404);
   const creator = l.viewer.kind === 'guest' && l.group.createdBy.kind === 'guest' && l.group.createdBy.id === l.viewer.guest.id;
   if (l.viewer.kind !== 'owner' && !creator) return fail('Seuls les organisateurs ou le créateur peuvent supprimer le groupe.', 403);
+  // Les messages vocaux du groupe sont aussi effacés de R2
+  const vocaux = (await db.messages.list(l.group.id)).filter((m) => m.audio);
+  await Promise.all(vocaux.map((m) => storage.remove(m.audio!.key).catch(() => undefined)));
   await db.groups.remove(l.group.id);
   return ok();
 }

@@ -185,6 +185,25 @@ export interface Group {
   reads: Record<string, string>;
   createdAt: string;
   updatedAt: string;
+  // ---- Résumé tenu à jour à chaque message (pour un affichage rapide) ----
+  /** Nombre total de messages du groupe */
+  msgCount?: number;
+  /** Nombre de messages déjà lus, par membre ('owner' ou id de l'invité) */
+  readCounts?: Record<string, number>;
+  /** Dernier message, pour la liste des discussions */
+  last?: LastMessage;
+  /** Augmente à chaque nouveau message, modification ou suppression */
+  rev?: number;
+}
+
+export interface LastMessage {
+  id: string;
+  kind: 'texte' | 'vocal' | 'supprime' | 'systeme';
+  text: string;
+  author: string;
+  authorKey: string;
+  seconds?: number;
+  at: string;
 }
 
 export interface Message {
@@ -194,6 +213,12 @@ export interface Message {
   author: Member & { name: string };
   text: string;
   createdAt: string;
+  /** Message vocal (fichier sur R2) */
+  audio?: { key: string; mime: string; seconds: number; size: number };
+  /** Date de la dernière modification du texte */
+  editedAt?: string;
+  /** Message supprimé (« Ce message a été supprimé ») */
+  deleted?: boolean;
 }
 
 export interface Vendor {
