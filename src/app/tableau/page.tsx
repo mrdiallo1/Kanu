@@ -1,366 +1,327 @@
+// Accueil du tableau de bord des mariés (pensé d'abord pour le téléphone).
+//  1. La photo de couple (facultative) avec les prénoms et le compte à rebours en direct
+//  2. Inviter : le code, l'aperçu du lien tel qu'il apparaît sur WhatsApp, les boutons d'envoi
+//  3. Les chiffres clés
+//  4. Les raccourcis vers chaque partie de l'espace
+//  5. Le stockage
 
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
-import { SiteHeader } from '@/components/SiteHeader';
-import { currentUser } from '@/lib/auth';
 import * as db from '@/lib/db';
-import { eventTitle, longDate, typeLabel } from '@/lib/format';
+import { owned } from '@/lib/page';
+import { daysLeft, expiresAt, feature, storage, storageWarning } from '@/lib/access';
+import { bytes, eventTitle, fcfa, longDate } from '@/lib/format';
+import { inviteLink } from '@/lib/events';
 import { PLANS } from '@/config/plans';
-import { StatusPill } from '@/components/StatusPill';
-
-export const metadata = {
-  title: 'Mes espaces',
-};
+import { siteUrl } from '@/config/site';
+import { ShareBox } from '@/components/ShareBox';
+import { CoupleHero } from '@/components/CoupleHero';
+import { Icon } from '@/components/Icon';
+import { recentPendingPayment } from '@/lib/payments';
 
 const styles = `
-.dashboard {
-  min-height: 80vh;
-  padding-top: 42px;
-  padding-bottom: 80px;
-  color: var(--encre);
+/* Sur l'accueil, le titre du haut est déjà dans la grande carte : on le cache */
+body:has(.home) .dash-head > .row,
+body:has(.home) .dash-head > h1 { display: none; }
+body:has(.home) .dash-head { padding-top: 12px; }
+
+.home { display: grid; gap: 18px; max-width: 760px; margin: 0 auto; }
+.home h2 { font-size: 22px; letter-spacing: -0.02em; margin: 10px 0 -4px; }
+
+/* ---------- 1. Carte du couple ---------- */
+.ch {
+  position: relative; overflow: hidden;
+  border-radius: 28px; min-height: 400px;
+  background: var(--orange); color: #fff;
+  display: flex; flex-direction: column; justify-content: space-between;
+  isolation: isolate;
 }
-
-.dashboard-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 24px;
-  margin-bottom: 38px;
+.ch::before {                       /* soleil décoratif quand il n'y a pas de photo */
+  content: ''; position: absolute; z-index: -1;
+  width: 420px; height: 420px; border-radius: 50%;
+  right: -140px; top: -160px; background: #ff7a2e;
 }
-
-.dashboard-eyebrow {
-  color: var(--orange-fonce);
-  font-size: 13px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: .09em;
-  margin-bottom: 9px;
+.ch::after {
+  content: ''; position: absolute; z-index: -1;
+  width: 220px; height: 220px; border-radius: 50%;
+  right: 40px; top: 120px; background: #ff8f4f; opacity: .55;
 }
-
-.dashboard-title {
-  font-size: clamp(30px, 5vw, 46px);
-  line-height: 1.1;
-  letter-spacing: -.045em;
-  font-weight: 800;
-  margin: 0;
+.ch.has-photo::before, .ch.has-photo::after { display: none; }
+.ch-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; }
+.ch.has-photo .ch-body { background: linear-gradient(to top, rgba(20,10,4,.88) 0%, rgba(20,10,4,.55) 55%, rgba(20,10,4,0) 100%); }
+.ch-top { display: flex; justify-content: flex-end; padding: 14px; }
+.ch-photo-actions { display: flex; gap: 6px; }
+.ch-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 36px; padding: 0 12px; border-radius: 999px; border: 0;
+  background: rgba(0,0,0,.42); color: #fff; font-weight: 650; font-size: 14px; cursor: pointer;
+  backdrop-filter: blur(8px);
 }
-
-.dashboard-description {
-  margin-top: 10px;
-  color: var(--encre-2);
-  font-size: 16px;
-  line-height: 1.6;
+.ch-body { padding: 70px 22px 22px; }
+.ch-names {
+  font-family: var(--display); font-weight: 800; font-variation-settings: 'wdth' 78;
+  font-size: 54px; line-height: .9; letter-spacing: -0.045em;
 }
-
-.dashboard-create {
-  flex-shrink: 0;
+.ch-names span { display: block; }
+.ch-date { margin-top: 10px; font-weight: 600; font-size: 16px; opacity: .95; }
+.ch-count { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 18px; }
+.ch-count div {
+  background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.28);
+  border-radius: 16px; padding: 10px 4px 8px; text-align: center;
+  backdrop-filter: blur(10px);
 }
-
-.dashboard-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
+.ch-count b { display: block; font-family: var(--display); font-weight: 800; font-size: 32px; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.ch-count span { font-size: 12px; font-weight: 600; opacity: .9; }
+.ch-done { margin-top: 18px; font-family: var(--display); font-weight: 750; font-size: 26px; }
+.ch-add {
+  display: flex; gap: 12px; align-items: center; margin-top: 18px;
+  padding: 12px 14px; border-radius: 16px; border: 1.5px dashed rgba(255,255,255,.8);
+  cursor: pointer;
 }
+.ch-add .ic { width: 42px; height: 42px; flex: none; border-radius: 12px; background: #fff; color: var(--orange-fonce); display: grid; place-items: center; }
+.ch-add b { display: block; font-size: 16px; }
+.ch-add small { font-size: 13px; opacity: .9; }
+.ch-error { margin-top: 10px; background: rgba(0,0,0,.35); padding: 8px 12px; border-radius: 10px; font-size: 14px; }
 
-.dashboard-summary h2 {
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -.02em;
-  margin: 0;
+/* ---------- 2. Inviter ---------- */
+.inv { background: #fff; border: 1.5px solid var(--trait); border-radius: 24px; padding: 18px; display: grid; gap: 14px; }
+.inv-code { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.inv-code small { display: block; font-size: 13.5px; color: var(--encre-3); }
+.inv-code b { font-family: var(--display); font-weight: 800; font-size: 34px; letter-spacing: .05em; line-height: 1.1; }
+.inv .row .btn { flex: 1; }
+
+/* Aperçu du lien tel qu'il s'affiche dans WhatsApp */
+.wa { background: #e7f6dc; border-radius: 14px; padding: 6px; max-width: 360px; }
+.wa-card { background: #d9efc9; border-radius: 10px; overflow: hidden; }
+.wa-card img { display: block; width: 100%; aspect-ratio: 1200 / 630; object-fit: cover; background: var(--orange); }
+.wa-card div { padding: 8px 10px 10px; }
+.wa-card b { display: block; font-size: 14px; color: #111; }
+.wa-card span { display: block; font-size: 12.5px; color: #4b5a45; line-height: 1.35; }
+.wa-card i { display: block; font-style: normal; font-size: 12px; color: #6b7a63; margin-top: 2px; }
+.wa-label { font-size: 13px; color: var(--encre-3); }
+
+/* ---------- 3. Chiffres clés ---------- */
+.kpis { display: grid; grid-template-columns: repeat(2, 1fr); background: var(--sable); border-radius: 24px; overflow: hidden; }
+.kpis div { padding: 16px 18px; }
+.kpis div:nth-child(odd) { border-right: 1px solid #f3dccb; }
+.kpis div:nth-child(-n+2) { border-bottom: 1px solid #f3dccb; }
+.kpis b { display: block; font-family: var(--display); font-weight: 800; font-size: 32px; letter-spacing: -0.03em; line-height: 1.05; }
+.kpis span { font-size: 14px; color: var(--encre-2); }
+
+/* ---------- 4. Raccourcis ---------- */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tile {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 16px; border-radius: 20px; background: var(--sable);
+  color: var(--encre); text-decoration: none; min-height: 128px;
+  transition: transform .1s;
 }
+.tile:active { transform: scale(.98); }
+.tile .ic { width: 44px; height: 44px; border-radius: 14px; background: #fff; color: var(--orange-fonce); display: grid; place-items: center; }
+.tile.hot { background: var(--orange); color: #fff; }
+.tile.hot .ic { background: rgba(255,255,255,.22); color: #fff; }
+.tile.hot small { color: rgba(255,255,255,.9); }
+.tile b { font-size: 16.5px; line-height: 1.2; margin-top: auto; }
+.tile small { font-size: 13.5px; color: var(--encre-3); margin-top: -8px; }
 
-.dashboard-count {
-  background: #fff0e6;
-  color: var(--orange-fonce);
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 800;
-}
+/* ---------- 5. Stockage ---------- */
+.store { border: 1.5px solid var(--trait); border-radius: 20px; padding: 16px; display: grid; gap: 10px; }
+.store .head { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; }
+.store .track { height: 8px; border-radius: 8px; background: var(--trait); overflow: hidden; }
+.store .track span { display: block; height: 100%; background: var(--orange); }
+.store p { font-size: 14px; color: var(--encre-2); }
 
-.event-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-}
-
-.event-card {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding: 24px;
-  border: 1px solid #eee8e2;
-  border-radius: 20px;
-  background: #fff;
-  text-decoration: none;
-  color: inherit;
-  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
-  box-shadow: 0 4px 18px rgba(33, 20, 13, .035);
-}
-
-.event-card:hover {
-  transform: translateY(-3px);
-  border-color: #ffc49f;
-  box-shadow: 0 12px 32px rgba(33, 20, 13, .08);
-}
-
-.event-card-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.event-type {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--orange-fonce);
-  background: #fff3eb;
-  padding: 7px 11px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.event-name {
-  font-size: 23px;
-  font-weight: 800;
-  letter-spacing: -.035em;
-  line-height: 1.25;
-  margin: 20px 0 8px;
-  overflow-wrap: anywhere;
-}
-
-.event-date {
-  color: var(--encre-2);
-  font-size: 14px;
-}
-
-.event-divider {
-  height: 1px;
-  background: #f0ece8;
-  margin: 22px 0 17px;
-}
-
-.event-card-bottom {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-
-.event-plan-label {
-  display: block;
-  color: var(--encre-3);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  margin-bottom: 5px;
-}
-
-.event-plan-name {
-  font-size: 14px;
-  font-weight: 750;
-}
-
-.event-open {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--orange-fonce);
-  font-size: 13px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.empty-dashboard {
-  padding: 56px 24px;
-  border: 1px dashed #e6d9cf;
-  border-radius: 22px;
-  background: #fff;
-  text-align: center;
-}
-
-.empty-icon {
-  display: grid;
-  place-items: center;
-  width: 66px;
-  height: 66px;
-  margin: 0 auto 20px;
-  border-radius: 20px;
-  background: #fff1e7;
-  font-size: 30px;
-}
-
-.empty-dashboard h2 {
-  font-size: 23px;
-  font-weight: 800;
-  letter-spacing: -.03em;
-  margin: 0;
-}
-
-.empty-dashboard p {
-  max-width: 430px;
-  margin: 12px auto 24px;
-  color: var(--encre-2);
-  line-height: 1.7;
-}
-
-@media (max-width: 700px) {
-  .dashboard {
-    padding-top: 28px;
-    padding-bottom: 48px;
-  }
-
-  .dashboard-top {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 20px;
-    margin-bottom: 32px;
-  }
-
-  .dashboard-create {
-    width: 100%;
-  }
-
-  .dashboard-create .btn {
-    display: flex;
-    justify-content: center;
-    width: 100%;
-    box-sizing: border-box;
-  }
-
-  .event-grid {
-    grid-template-columns: 1fr;
-    gap: 13px;
-  }
-
-  .event-card {
-    padding: 20px;
-    border-radius: 17px;
-  }
-
-  .event-name {
-    font-size: 21px;
-    margin-top: 17px;
-  }
-
-  .empty-dashboard {
-    padding: 42px 20px;
-  }
-
-  .dashboard-description {
-    font-size: 14px;
-  }
+@media (min-width: 721px) {
+  .ch { min-height: 460px; }
+  .ch-names { font-size: 76px; }
+  .ch-count b { font-size: 40px; }
+  .kpis { grid-template-columns: repeat(4, 1fr); }
+  .kpis div { border: 0 !important; border-right: 1px solid #f3dccb !important; }
+  .kpis div:last-child { border-right: 0 !important; }
+  .tiles { grid-template-columns: repeat(3, 1fr); }
 }
 `;
 
-export default async function Page() {
-  const user = await currentUser();
+export default async function Page({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ bienvenue?: string }>;
+}) {
+  const { event } = await owned(params);
+  const { bienvenue } = await searchParams;
+  const plan = PLANS[event.plan];
+  const base = `/tableau/${event.id}`;
+  const names = event.type === 'bapteme' ? [event.babyName || 'Bébé'] : [event.hostA, `& ${event.hostB}`];
+  const coverUrl = event.coverMediaId ? `/api/medias/${event.coverMediaId}` : undefined;
+  const target = `${event.date}T${event.time || '12:00'}:00`;
+  const dateLabel = `${longDate(event.date)}, ${(event.time || '12:00').replace(':', ' h ')}`;
 
-  if (!user) redirect('/connexion');
+  // ---------- Espace pas encore payé ----------
+  if (event.status === 'brouillon') {
+    const pending = await recentPendingPayment(event.id);
+    return (
+      <div className="home">
+        <style>{styles}</style>
+        <CoupleHero eventId={event.id} names={names} dateLabel={dateLabel} target={target} coverUrl={coverUrl} />
+        <div className="inv">
+          {pending ? (
+            <>
+              <h2 style={{ margin: 0 }}>Paiement en cours de vérification</h2>
+              <p className="muted">
+                LigdiCash n’a pas encore confirmé votre paiement de {fcfa(plan.price)}. Cela prend en général moins d’une
+                minute. Ne payez pas une deuxième fois : touchez « Vérifier à nouveau » dans un instant.
+              </p>
+              <a href={base} className="btn block">
+                Vérifier à nouveau
+              </a>
+              <Link href={`/paiement/${event.id}`} className="small muted" style={{ textAlign: 'center' }}>
+                Le paiement n’a pas abouti ? Payer à nouveau
+              </Link>
+            </>
+          ) : (
+            <>
+              <h2 style={{ margin: 0 }}>Il reste le paiement</h2>
+              <p className="muted">Votre espace est prêt. Il s’ouvrira à vos invités dès que le paiement de {fcfa(plan.price)} sera validé.</p>
+              <Link href={`/paiement/${event.id}`} className="btn block">
+                Payer et ouvrir l’espace
+              </Link>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
-  const list = await db.events.byOwner(user.id);
+  // ---------- Données ----------
+  const [guests, checkins, media, book, groups, st] = await Promise.all([
+    db.guests.list(event.id),
+    db.checkins.list(event.id),
+    db.media.list(event.id, ['photo', 'video']),
+    db.guestbook.list(event.id),
+    db.groups.byEvent(event.id),
+    storage(event),
+  ]);
+  const seats = guests.reduce((n, g) => n + g.seats, 0);
+  const entered = new Set(checkins.map((c) => c.guestId)).size;
+  const qr = feature(event, 'qrCodes');
+  const warn = storageWarning(st.percent);
+  const left = daysLeft(event);
+  const link = inviteLink(event);
+  const place = event.receptionPlace || event.ceremonyPlace;
+  const message =
+    event.type === 'bapteme'
+      ? `Vous êtes invités au baptême de ${event.babyName}, le ${longDate(event.date).toLowerCase()}. Toutes les infos, et l’endroit pour partager vos photos : ${link} (code ${event.code})`
+      : `${event.hostA} et ${event.hostB} vous invitent à leur mariage, le ${longDate(event.date).toLowerCase()}. Programme, lieux et galerie photos : ${link} (code ${event.code})`;
+
+  const tiles = [
+    { href: `${base}/invites`, icon: 'users', label: 'Invités', sub: `${seats} sur ${plan.maxGuests}`, hot: true },
+    ...(qr ? [{ href: `${base}/entrees`, icon: 'scan', label: 'Entrées', sub: `${entered} scannée${entered > 1 ? 's' : ''}` }] : []),
+    { href: `${base}/galerie`, icon: 'photos', label: 'Photos', sub: `${media.length} publiée${media.length > 1 ? 's' : ''}` },
+    { href: `/e/${event.slug}/discussions`, icon: 'chat', label: 'Discussions', sub: `${groups.length} groupe${groups.length > 1 ? 's' : ''}` },
+    { href: `${base}/livre-or`, icon: 'book', label: 'Livre d’or', sub: `${book.length} message${book.length > 1 ? 's' : ''}` },
+    { href: `${base}/souvenirs`, icon: 'download', label: 'Souvenirs', sub: 'Tout télécharger' },
+    { href: '/boutique', icon: 'bag', label: 'Boutique', sub: 'Eau, riz, chaises…' },
+    { href: '/boutique/commandes', icon: 'box', label: 'Mes commandes', sub: 'Suivi des livraisons' },
+    { href: `${base}/reglages`, icon: 'settings', label: 'Réglages', sub: 'Infos, programme' },
+    { href: `/e/${event.slug}`, icon: 'ticket', label: 'Espace invité', sub: 'Le voir comme eux' },
+  ];
 
   return (
-    <>
+    <div className="home">
       <style>{styles}</style>
-      <SiteHeader />
 
-      <main className="wrap dashboard">
-        <section className="dashboard-top">
+      {bienvenue && (
+        <p className="alert ok" role="status">
+          Paiement validé. {eventTitle(event)} est ouvert : envoyez le lien à vos invités.
+        </p>
+      )}
+
+      {/* 1. Photo de couple + compte à rebours */}
+      <CoupleHero eventId={event.id} names={names} dateLabel={dateLabel} target={target} coverUrl={coverUrl} />
+
+      {/* 2. Inviter */}
+      <section className="inv" aria-label="Inviter vos proches">
+        <div className="inv-code">
           <div>
-            <p className="dashboard-eyebrow">Votre espace personnel</p>
-            <h1 className="dashboard-title">
-              Bonjour {user.name.split(' ')[0]} 👋
-            </h1>
-            <p className="dashboard-description">
-              Retrouvez et gérez tous vos événements au même endroit.
-            </p>
+            <small>Code d’invitation</small>
+            <b>{event.code}</b>
           </div>
-
-          <div className="dashboard-create">
-            <Link href="/creer" className="btn">
-              + Créer un espace
-            </Link>
+        </div>
+        <div>
+          <div className="wa-label" style={{ marginBottom: 6 }}>
+            Vos invités verront ceci sur WhatsApp
           </div>
-        </section>
-
-        {list.length === 0 ? (
-          <section className="empty-dashboard">
-            <div className="empty-icon">🎉</div>
-
-            <h2>Votre première fête commence ici</h2>
-
-            <p>
-              Vous n'avez pas encore créé d'espace. Préparez votre mariage
-              ou votre baptême et rassemblez toutes les informations
-              dans un seul endroit.
-            </p>
-
-            <Link href="/creer" className="btn">
-              Créer mon premier espace
-            </Link>
-          </section>
-        ) : (
-          <>
-            <div className="dashboard-summary">
-              <h2>Mes événements</h2>
-              <span className="dashboard-count">
-                {list.length} {list.length > 1 ? 'espaces' : 'espace'}
-              </span>
+          <div className="wa">
+            <div className="wa-card">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`/api/apercu/${event.slug}?v=${event.coverMediaId || 'sans-photo'}`} alt="Aperçu du lien d’invitation" />
+              <div>
+                <b>{eventTitle(event)}</b>
+                <span>
+                  {longDate(event.date)}
+                  {place ? `, ${place}` : ''}
+                </span>
+                <i>{siteUrl().replace(/^https?:\/\//, '')}</i>
+              </div>
             </div>
+          </div>
+        </div>
+        <ShareBox link={link} message={message} light={false} />
+      </section>
 
-            <section className="event-grid">
-              {list.map((e) => (
-                <Link
-                  key={e.id}
-                  href={`/tableau/${e.id}`}
-                  className="event-card"
-                >
-                  <div className="event-card-top">
-                    <span className="event-type">
-                      {e.type === 'mariage' ? '💍' : '👶'}
-                      {typeLabel(e.type)}
-                    </span>
+      {/* 3. Chiffres clés */}
+      <section className="kpis" aria-label="En bref">
+        <div>
+          <b>{seats}</b>
+          <span>invités</span>
+        </div>
+        <div>
+          <b>{qr ? entered : guests.filter((g) => g.joinedAt).length}</b>
+          <span>{qr ? 'entrés le jour J' : 'connectés'}</span>
+        </div>
+        <div>
+          <b>{media.length}</b>
+          <span>photos et vidéos</span>
+        </div>
+        <div>
+          <b>{book.length}</b>
+          <span>mots au livre d’or</span>
+        </div>
+      </section>
 
-                    <StatusPill event={e} />
-                  </div>
+      {/* 4. Raccourcis */}
+      <h2>Votre espace</h2>
+      <nav className="tiles" aria-label="Sections">
+        {tiles.map((t) => (
+          <Link key={t.href} href={t.href} className={`tile${'hot' in t && t.hot ? ' hot' : ''}`}>
+            <span className="ic">
+              <Icon name={t.icon} />
+            </span>
+            <b>{t.label}</b>
+            <small>{t.sub}</small>
+          </Link>
+        ))}
+      </nav>
 
-                  <h3 className="event-name">
-                    {eventTitle(e)}
-                  </h3>
-
-                  <p className="event-date">
-                    📅 {longDate(e.date)}
-                  </p>
-
-                  <div className="event-divider" />
-
-                  <div className="event-card-bottom">
-                    <div>
-                      <span className="event-plan-label">
-                        Votre offre
-                      </span>
-                      <span className="event-plan-name">
-                        {PLANS[e.plan]?.name ?? e.plan}
-                      </span>
-                    </div>
-
-                    <span className="event-open">
-                      Ouvrir l'espace <span aria-hidden="true">→</span>
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </section>
-          </>
-        )}
-      </main>
-    </>
+      {/* 5. Stockage */}
+      <section className="store" aria-label="Stockage">
+        <div className="head">
+          <b>Stockage</b>
+          <span className="muted">
+            {bytes(st.stored)} sur {plan.storageGb} Go
+          </span>
+        </div>
+        <div className="track" aria-hidden>
+          <span style={{ width: `${Math.max(st.percent, st.stored ? 1 : 0)}%` }} />
+        </div>
+        <p>
+          {left > 0
+            ? `Vos souvenirs restent en ligne jusqu’au ${longDate(expiresAt(event).toISOString()).toLowerCase()}.`
+            : 'La période de conservation est terminée.'}
+        </p>
+        {warn && <p className="alert info small">{warn}</p>}
+      </section>
+    </div>
   );
 }

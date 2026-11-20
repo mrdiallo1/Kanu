@@ -18,6 +18,7 @@
 //   LIGDICASH_URL=https://app.ligdicash.com   (facultatif)
 //   NEXT_PUBLIC_SITE_URL=https://votre-site   (adresse publique en https)
 
+import { cache } from 'react';
 import * as db from '@/lib/db';
 import { PLANS, type PlanId } from '@/config/plans';
 import { site, siteUrl } from '@/config/site';
@@ -186,17 +187,50 @@ export async function checkPayment(paymentId: string) {
     return p; // on réessaiera plus tard
   }
 
+  console.log(`LigdiCash (vérification) paiement ${p.id} : statut « ${data.status ?? '?'} », code ${data.response_code ?? '?'}`);
+
   if (data.status === 'completed') {
-    const paid = Number(data.amount ?? data.montant);
-    if (paid >= p.amount) return markPaid(p.id);
-    console.error(`LigdiCash : montant reçu ${paid} inférieur à ${p.amount} (paiement ${p.id})`);
-    return p;
+    // Le montant n'est contrôlé que si LigdiCash le renvoie
+    const raw = data.amount ?? data.montant;
+    const paid = raw === undefined || raw === null || raw === '' ? NaN : Number(raw);
+    if (Number.isFinite(paid) && paid < p.amount) {
+      console.error(`LigdiCash : montant reçu ${paid} inférieur à ${p.amount} (paiement ${p.id})`);
+      return p;
+    }
+    return markPaid(p.id);
   }
   if (data.status === 'notcompleted') {
     await db.payments.update(p.id, { status: 'echoue' });
     return db.payments.byId(p.id);
   }
   return p; // 'pending' ou erreur technique : on attend
+}
+
+/**
+ * Revérifie auprès de LigdiCash les paiements encore « en attente » d'un espace.
+ * Appelé à chaque ouverture du tableau de bord d'un espace non payé : si la
+ * notification de LigdiCash s'est perdue, l'espace s'ouvre quand même.
+ * Renvoie true si l'espace vient d'être payé.
+ */
+export const syncEventPayments = cache(async (eventId: string): Promise<boolean> => {
+  if (isSimulation()) return false;
+  const month = Date.now() - 30 * 86_400_000;
+  const pending = ((await db.payments.byEvent(eventId)) as LigdiPayment[])
+    .filter((p) => p.status === 'en_attente' && p.provider === 'ligdicash' && p.providerToken && Date.parse(p.createdAt) > month)
+    .slice(0, 3);
+  for (const p of pending) {
+    const r = await checkPayment(p.id);
+    if (r?.status === 'paye') return true;
+  }
+  return false;
+});
+
+/** Un paiement LigdiCash lancé il y a moins d'une heure et pas encore confirmé ? */
+export async function recentPendingPayment(eventId: string) {
+  const hour = Date.now() - 3_600_000;
+  return (await db.payments.byEvent(eventId)).find(
+    (p) => p.status === 'en_attente' && p.provider === 'ligdicash' && Date.parse(p.createdAt) > hour,
+  );
 }
 
 /** À appeler uniquement après confirmation par le prestataire. */

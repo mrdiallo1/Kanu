@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import * as db from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { syncEventPayments } from '@/lib/payments';
 import type { Agent, EventSpace, Guest, User } from '@/lib/types';
 
 // ---------- Mots de passe ----------
@@ -75,7 +76,12 @@ export async function agentFor(event: EventSpace): Promise<Agent | null> {
 export async function ownerOf(eventId: string) {
   const user = await currentUser();
   if (!user) return null;
-  const event = await db.events.byId(eventId);
+  let event = await db.events.byId(eventId);
   if (!event || event.ownerId !== user.id) return null;
+  // Espace pas encore payé : on revérifie chez LigdiCash au cas où le paiement
+  // aurait abouti sans que la notification nous parvienne.
+  if (event.status === 'brouillon' && (await syncEventPayments(event.id))) {
+    event = (await db.events.byId(eventId)) ?? event;
+  }
   return { user, event };
 }
