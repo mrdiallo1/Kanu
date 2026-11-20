@@ -13,5 +13,5 @@ export const site = {
 };
 
 export function siteUrl(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL || 'https://kanumali-92lph52hc-mrdiallo1.vercel.app/').replace(/\/$/, '');
+  return (process.env.NEXT_PUBLIC_SITE_URL || 'https://kanumali.vercel.app').replace(/\/$/, '');
 }
