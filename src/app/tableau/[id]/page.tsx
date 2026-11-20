@@ -16,6 +16,7 @@ import { siteUrl } from '@/config/site';
 import { ShareBox } from '@/components/ShareBox';
 import { CoupleHero } from '@/components/CoupleHero';
 import { Icon } from '@/components/Icon';
+import { recentPendingPayment } from '@/lib/payments';
 
 const styles = `
 /* Sur l'accueil, le titre du haut est déjà dans la grande carte : on le cache */
@@ -158,16 +159,35 @@ export default async function Page({
 
   // ---------- Espace pas encore payé ----------
   if (event.status === 'brouillon') {
+    const pending = await recentPendingPayment(event.id);
     return (
       <div className="home">
         <style>{styles}</style>
         <CoupleHero eventId={event.id} names={names} dateLabel={dateLabel} target={target} coverUrl={coverUrl} />
         <div className="inv">
-          <h2 style={{ margin: 0 }}>Il reste le paiement</h2>
-          <p className="muted">Votre espace est prêt. Il s’ouvrira à vos invités dès que le paiement de {fcfa(plan.price)} sera validé.</p>
-          <Link href={`/paiement/${event.id}`} className="btn block">
-            Payer et ouvrir l’espace
-          </Link>
+          {pending ? (
+            <>
+              <h2 style={{ margin: 0 }}>Paiement en cours de vérification</h2>
+              <p className="muted">
+                LigdiCash n’a pas encore confirmé votre paiement de {fcfa(plan.price)}. Cela prend en général moins d’une
+                minute. Ne payez pas une deuxième fois : touchez « Vérifier à nouveau » dans un instant.
+              </p>
+              <a href={base} className="btn block">
+                Vérifier à nouveau
+              </a>
+              <Link href={`/paiement/${event.id}`} className="small muted" style={{ textAlign: 'center' }}>
+                Le paiement n’a pas abouti ? Payer à nouveau
+              </Link>
+            </>
+          ) : (
+            <>
+              <h2 style={{ margin: 0 }}>Il reste le paiement</h2>
+              <p className="muted">Votre espace est prêt. Il s’ouvrira à vos invités dès que le paiement de {fcfa(plan.price)} sera validé.</p>
+              <Link href={`/paiement/${event.id}`} className="btn block">
+                Payer et ouvrir l’espace
+              </Link>
+            </>
+          )}
         </div>
       </div>
     );
